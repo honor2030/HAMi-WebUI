@@ -94,6 +94,8 @@ import useTableColumnVisibility from '~/vgpu/hooks/useTableColumnVisibility';
 import useTableFilters from '~/vgpu/hooks/useTableFilters';
 import useLocalPagination from '~/vgpu/hooks/useLocalPagination';
 import useAutoRefresh from '~/vgpu/hooks/useAutoRefresh';
+import { createFilterSnapshot } from '~/vgpu/hooks/filterSnapshot.mjs';
+import { withBackgroundSilence } from '@/utils/requestNotify.mjs';
 
 const props = defineProps(['hideTitle', 'filters', 'style']);
 const { t, locale } = useI18n();
@@ -266,27 +268,37 @@ const baseColumns = computed(() => [
 const { eyeColumnKeys, columnOptions, visibleColumns } = useTableColumnVisibility(baseColumns);
 const { pagination, pagedTableData, syncTotalAndClamp, resetToFirstPage } = useLocalPagination(tableData);
 
+// Request filters built from the live state (props + toolbar controls). Returns
+// a fresh plain object so it can be kept as a snapshot.
+const computeRequestFilters = () => {
+  const baseFilters = { ...(props.filters || {}) };
+  delete baseFilters.nodeName;
+  delete baseFilters.nodeUid;
+  const nodeName = hasManualNodeScope.value ? filters.nodeName : props.filters?.nodeName;
+  const nodeUid = hasManualNodeScope.value ? undefined : props.filters?.nodeUid;
+  return {
+    ...baseFilters,
+    ...(getTrimValue(filters.name) ? { name: getTrimValue(filters.name) } : {}),
+    ...(nodeName ? { nodeName } : {}),
+    ...(nodeUid ? { nodeUid } : {}),
+    ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.deviceId ? { deviceId: filters.deviceId } : {}),
+  };
+};
+// Automatic ticks must not pick up a half-typed search term: they reuse the
+// filters from the last explicit apply (Enter/blur/select/prop change).
+const appliedFilters = createFilterSnapshot(computeRequestFilters);
+
 // `background` is true for automatic ticks: keep the table interactive instead
-// of flashing the loading overlay every few seconds.
+// of flashing the loading overlay every few seconds, and fail silently (the
+// polling controller backs off) instead of toasting on every tick.
 const fetchTableData = async ({ background = false } = {}) => {
   if (!background) tableLoading.value = true;
   try {
-    const baseFilters = { ...(props.filters || {}) };
-    delete baseFilters.nodeName;
-    delete baseFilters.nodeUid;
-    const nodeName = hasManualNodeScope.value ? filters.nodeName : props.filters?.nodeName;
-    const nodeUid = hasManualNodeScope.value ? undefined : props.filters?.nodeUid;
-    const payload = {
-      filters: {
-        ...baseFilters,
-        ...(getTrimValue(filters.name) ? { name: getTrimValue(filters.name) } : {}),
-        ...(nodeName ? { nodeName } : {}),
-        ...(nodeUid ? { nodeUid } : {}),
-        ...(filters.status ? { status: filters.status } : {}),
-        ...(filters.deviceId ? { deviceId: filters.deviceId } : {}),
-      },
-    };
-    const { items = [] } = await taskApi.getTaskListReq(payload);
+    const payload = { filters: appliedFilters.forRun({ background }) };
+    const { items = [] } = await request(
+      withBackgroundSilence(taskApi.getTaskList(payload), background),
+    );
     tableData.value = items;
     syncTotalAndClamp();
   } finally {

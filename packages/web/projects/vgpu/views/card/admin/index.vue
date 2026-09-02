@@ -84,6 +84,8 @@ import useTableColumnVisibility from '~/vgpu/hooks/useTableColumnVisibility';
 import useTableFilters from '~/vgpu/hooks/useTableFilters';
 import useLocalPagination from '~/vgpu/hooks/useLocalPagination';
 import useAutoRefresh from '~/vgpu/hooks/useAutoRefresh';
+import { createFilterSnapshot } from '~/vgpu/hooks/filterSnapshot.mjs';
+import { withBackgroundSilence } from '@/utils/requestNotify.mjs';
 
 const props = defineProps(['hideTitle', 'filters']);
 
@@ -391,23 +393,33 @@ watch(
   },
 );
 
+// Request filters built from the live state (props + toolbar controls). Returns
+// a fresh plain object so it can be kept as a snapshot.
+const computeRequestFilters = () => {
+  const baseFilters = { ...(props.filters || {}) };
+  delete baseFilters.nodeName;
+  const nodeName = hasManualNodeScope.value ? filters.nodeName : props.filters?.nodeName;
+  return {
+    ...baseFilters,
+    ...(getTrimValue(filters.uid) ? { uid: getTrimValue(filters.uid) } : {}),
+    ...(nodeName ? { nodeName } : {}),
+    ...(filters.type ? { type: filters.type } : {}),
+  };
+};
+// Automatic ticks must not pick up a half-typed search term: they reuse the
+// filters from the last explicit apply (Enter/blur/select/prop change).
+const appliedFilters = createFilterSnapshot(computeRequestFilters);
+
 // `background` is true for automatic ticks: keep the table interactive instead
-// of flashing the loading overlay every few seconds.
+// of flashing the loading overlay every few seconds, and fail silently (the
+// polling controller backs off) instead of toasting on every tick.
 const fetchTableData = async ({ background = false } = {}) => {
   if (!background) tableLoading.value = true;
   try {
-    const baseFilters = { ...(props.filters || {}) };
-    delete baseFilters.nodeName;
-    const nodeName = hasManualNodeScope.value ? filters.nodeName : props.filters?.nodeName;
-    const payload = {
-      filters: {
-        ...baseFilters,
-        ...(getTrimValue(filters.uid) ? { uid: getTrimValue(filters.uid) } : {}),
-        ...(nodeName ? { nodeName } : {}),
-        ...(filters.type ? { type: filters.type } : {}),
-      },
-    };
-    const { list = [] } = await request(cardApi.getCardList(payload));
+    const payload = { filters: appliedFilters.forRun({ background }) };
+    const { list = [] } = await request(
+      withBackgroundSilence(cardApi.getCardList(payload), background),
+    );
     tableData.value = list;
     syncTotalAndClamp();
   } finally {

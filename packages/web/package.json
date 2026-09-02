@@ -6,7 +6,7 @@
     "start": "vite",
     "start:dev": "vite",
     "start:webpack": "export NODE_ENV=development && vue-cli-service serve",
-    "lint": "eslint --ext .js,.vue src",
+    "lint": "eslint --ext .js,.mjs,.vue src projects/vgpu/hooks projects/vgpu/views/card/admin/index.vue projects/vgpu/views/task/admin/index.vue",
     "build": "vite build",
     "build:webpack": "vue-cli-service build",
     "build:stage": "vue-cli-service build --mode staging",
@@ -16,8 +16,8 @@
     "new": "plop",
     "svgo": "svgo -f src/icons/svg --config=src/icons/svgo.yml",
     "test:unit": "jest --clearCache && vue-cli-service test:unit",
-    "test:hooks": "node --test projects/vgpu/hooks/__tests__/*.test.mjs",
-    "test:ci": "npm run lint && npm run test:unit"
+    "test:hooks": "node --test \"projects/**/__tests__/*.test.mjs\" \"src/**/__tests__/*.test.mjs\"",
+    "test:ci": "npm run lint && npm run test:hooks && npm run test:unit"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.1.0",

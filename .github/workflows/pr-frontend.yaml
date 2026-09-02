@@ -63,6 +63,10 @@ jobs:
         run: pnpm --filter hami-webui-web run build
       - name: Test BFF
         run: pnpm test
+      # Dependency-free Node test runner suites for the web package's pure
+      # helpers (polling controller, filter snapshot, request notification flag).
+      - name: Test web hooks
+        run: pnpm --filter hami-webui-web run test:hooks
 
   lint:
     runs-on: ubuntu-latest

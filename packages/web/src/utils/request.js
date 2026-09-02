@@ -2,6 +2,7 @@ import axios from 'axios';
 
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus';
 import i18n from '@/locales';
+import { isSilentRequest } from './requestNotify.mjs';
 
 // Default request timeout in ms. Override at build time via VUE_APP_REQUEST_TIMEOUT
 // (injected through .env.* or chart values.frontend.requestTimeout). 60s is large
@@ -50,7 +51,9 @@ service.interceptors.response.use(
       if (res.code === 50008 || res.code === 50012 || res.code === 50014) {
         // to re-login
         await ElMessageBox.alert(i18n.global.t('common.requestError'), i18n.global.t('common.tip'));
-      } else {
+      } else if (!isSilentRequest(response.config)) {
+        // `{ silent: true }` requests (background polling) reject without a
+        // notification; the caller handles the failure.
         ElNotification({
           title: res.reason,
           message: res.message,
@@ -64,10 +67,12 @@ service.interceptors.response.use(
     }
   },
   (error) => {
-    ElMessage({
-      message: error.message,
-      type: 'error',
-    });
+    if (!isSilentRequest(error && error.config)) {
+      ElMessage({
+        message: error.message,
+        type: 'error',
+      });
+    }
     return Promise.reject(error);
   },
 );
