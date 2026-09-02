@@ -83,6 +83,7 @@ import { useI18n } from 'vue-i18n';
 import useTableColumnVisibility from '~/vgpu/hooks/useTableColumnVisibility';
 import useTableFilters from '~/vgpu/hooks/useTableFilters';
 import useLocalPagination from '~/vgpu/hooks/useLocalPagination';
+import useAutoRefresh from '~/vgpu/hooks/useAutoRefresh';
 
 const props = defineProps(['hideTitle', 'filters']);
 
@@ -390,8 +391,10 @@ watch(
   },
 );
 
-const fetchTableData = async () => {
-  tableLoading.value = true;
+// `background` is true for automatic ticks: keep the table interactive instead
+// of flashing the loading overlay every few seconds.
+const fetchTableData = async ({ background = false } = {}) => {
+  if (!background) tableLoading.value = true;
   try {
     const baseFilters = { ...(props.filters || {}) };
     delete baseFilters.nodeName;
@@ -408,11 +411,14 @@ const fetchTableData = async () => {
     tableData.value = list;
     syncTotalAndClamp();
   } finally {
-    tableLoading.value = false;
+    if (!background) tableLoading.value = false;
   }
 };
+// Short-lived GPU Pods can appear and vanish between manual refreshes; poll
+// while the page is visible so allocations stay current without user action.
+const { refreshNow } = useAutoRefresh(fetchTableData);
 const { getTrimValue, applyFilters, refreshTable } = useTableFilters({
-  fetchTableData,
+  fetchTableData: refreshNow,
   resetBeforeApply: resetToFirstPage,
 });
 const onNodeNameChange = () => {
