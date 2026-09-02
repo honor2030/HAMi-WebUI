@@ -6,7 +6,7 @@
     "start": "vite",
     "start:dev": "vite",
     "start:webpack": "export NODE_ENV=development && vue-cli-service serve",
-    "lint": "eslint --ext .js,.mjs,.vue src projects/vgpu/hooks/__tests__ projects/vgpu/hooks/autoRefreshController.mjs projects/vgpu/hooks/filterSnapshot.mjs projects/vgpu/hooks/useAutoRefresh.js projects/vgpu/views/card/admin/index.vue projects/vgpu/views/task/admin/index.vue",
+    "lint": "eslint --ext .js,.mjs,.vue src projects/vgpu/hooks/__tests__ projects/vgpu/hooks/autoRefreshController.mjs projects/vgpu/hooks/filterSnapshot.mjs projects/vgpu/hooks/liveSummary.mjs projects/vgpu/hooks/useAutoRefresh.js projects/vgpu/api/card.js projects/vgpu/components/TabTop.vue projects/vgpu/components/previewBar.vue projects/vgpu/views/card/admin/index.vue projects/vgpu/views/task/admin/index.vue projects/vgpu/views/task/admin/top.vue",
     "build": "vite build",
     "build:webpack": "vue-cli-service build",
     "build:stage": "vue-cli-service build --mode staging",

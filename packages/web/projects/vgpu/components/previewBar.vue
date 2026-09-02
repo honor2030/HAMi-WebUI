@@ -36,16 +36,16 @@
       </block-box>
     </li>
     <li v-if="isNodeType" class="preview-item">
-      <TabTop v-bind="nodeComputeTop5" :onClick="handleClick" class="node-top" />
+      <TabTop ref="computeTopRef" v-bind="nodeComputeTop5" :onClick="handleClick" class="node-top" />
     </li>
     <li v-else class="preview-item">
-      <TabTop v-bind="gpuComputeTop5" :onClick="handleClick" class="node-top" />
+      <TabTop ref="computeTopRef" v-bind="gpuComputeTop5" :onClick="handleClick" class="node-top" />
     </li>
     <li v-if="isNodeType" class="preview-item">
-      <TabTop v-bind="nodeMemoryTop5" :onClick="handleClick" class="node-top" />
+      <TabTop ref="memoryTopRef" v-bind="nodeMemoryTop5" :onClick="handleClick" class="node-top" />
     </li>
     <li v-else class="preview-item">
-      <TabTop v-bind="gpuMemoryTop5" :onClick="handleClick" class="node-top" />
+      <TabTop ref="memoryTopRef" v-bind="gpuMemoryTop5" :onClick="handleClick" class="node-top" />
     </li>
   </ul>
 </template>
@@ -57,6 +57,8 @@ import { getPreviewBarPie } from '~/vgpu/components/config';
 import { onMounted, ref, computed } from 'vue';
 import cardApi from '~/vgpu/api/card';
 import TabTop from '~/vgpu/components/TabTop.vue';
+import { withBackgroundSilence } from '@/utils/requestNotify.mjs';
+import { settleAll, sameNameValueSeries } from '~/vgpu/hooks/liveSummary.mjs';
 
 const props = defineProps({
   title: {
@@ -74,6 +76,7 @@ import { useI18n } from 'vue-i18n';
 const { t } = useI18n();
 
 const isNodeType = computed(() => props.type === 'node');
+const hidePie = computed(() => Boolean(props.hidePie));
 
 const nodeComputeTop5 = computed(() => ({
   title: t('dashboard.nodeComputeTop5'),
@@ -190,21 +193,46 @@ const pieDataWithPercent = computed(() => {
     }));
 });
 
-onMounted(async () => {
+const computeTopRef = ref();
+const memoryTopRef = ref();
+
+const fetchPieData = async ({ background = false } = {}) => {
   const thisPieConfig = pieConfig[props.type];
 
-  const { data } = await cardApi.getInstantVector({
-    query: thisPieConfig.query,
-  });
+  const { data } = await cardApi.getInstantVector(
+    { query: thisPieConfig.query },
+    withBackgroundSilence({}, background),
+  );
 
   const colors = ['#76B900', '#9FCB98', '#F59E0B', '#4F8F87', '#14B8A6', '#6B7280'];
-  pieData.value = data.map((item, index) => {
+  const next = data.map((item, index) => {
     return {
       name: item.metric[thisPieConfig.key],
       value: Number(item.value),
       color: colors[index],
     };
   });
+  // Replacing the array re-initialises the ECharts instance (and drops the
+  // highlighted slice), so on background ticks only commit real changes.
+  if (background && sameNameValueSeries(pieData.value, next)) return;
+  pieData.value = next;
+};
+
+// Refreshes the pie and both Top5 charts. Exposed so the owning page can drive
+// it from its existing polling controller (`useAutoRefresh`) rather than each
+// chart running its own timer. Waits for every request to settle before
+// resolving so the caller never overlaps automatic requests.
+const refresh = ({ background = false } = {}) =>
+  settleAll([
+    () => (hidePie.value ? undefined : fetchPieData({ background })),
+    () => computeTopRef.value?.refresh?.({ background }),
+    () => memoryTopRef.value?.refresh?.({ background }),
+  ]);
+
+defineExpose({ refresh });
+
+onMounted(() => {
+  if (!hidePie.value) fetchPieData();
 });
 </script>
 

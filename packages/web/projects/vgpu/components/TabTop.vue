@@ -53,6 +53,8 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import cardApi from '~/vgpu/api/card';
 import { cloneDeep } from 'lodash';
+import { withBackgroundSilence } from '@/utils/requestNotify.mjs';
+import { settleAll } from '~/vgpu/hooks/liveSummary.mjs';
 
 const props = defineProps({
   title: String,
@@ -119,22 +121,34 @@ const handleItemClick = (item) => {
   handleClick({ data: item });
 };
 
-const fetchData = (configList) => {
-  if (!configList?.length) return;
-  tabActive.value = configList[0].key;
-  configList.forEach((v, i) => {
-    cardApi
-      .getInstantVector({
-        query: v.query,
-      })
-      .then((res) => {
-        configList[i].data = res.data.map((item) => ({
-          name: item.metric[v.nameKey],
-          value: item.value,
-        }));
-      });
-  });
+// Fetches every tab's query. Initial load / config change (`background: false`)
+// resets the active tab to the first one, as before. Background refreshes keep
+// the tab the user selected and mark requests silent so a transient backend
+// hiccup does not toast every tick; the rejection still propagates so the
+// caller's polling controller can back off.
+const fetchData = (configList, { background = false } = {}) => {
+  if (!configList?.length) return Promise.resolve();
+  if (!background) tabActive.value = configList[0].key;
+  return settleAll(
+    configList.map((v, i) => () =>
+      cardApi
+        .getInstantVector({ query: v.query }, withBackgroundSilence({}, background))
+        .then((res) => {
+          configList[i].data = res.data.map((item) => ({
+            name: item.metric[v.nameKey],
+            value: item.value,
+          }));
+        }),
+    ),
+  );
 };
+
+// Exposed so a parent that already polls (see `useAutoRefresh`) can refresh
+// these charts on the same cadence instead of running its own timer.
+const refresh = ({ background = false } = {}) =>
+  fetchData(currentConfig.value, { background });
+
+defineExpose({ refresh });
 
 onMounted(() => {
   fetchData(currentConfig.value);

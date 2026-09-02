@@ -3,7 +3,7 @@
     <div v-if="!hideTitle" class="vgpu-admin-page-title">{{ $t('task.title') }}</div>
 
     <div class="task-admin-top-wrap" v-if="!hideTitle">
-      <Top />
+      <Top ref="topRef" />
     </div>
 
     <div class="task-admin-table-wrap">
@@ -95,9 +95,11 @@ import useTableFilters from '~/vgpu/hooks/useTableFilters';
 import useLocalPagination from '~/vgpu/hooks/useLocalPagination';
 import useAutoRefresh from '~/vgpu/hooks/useAutoRefresh';
 import { createFilterSnapshot } from '~/vgpu/hooks/filterSnapshot.mjs';
+import { settleAll } from '~/vgpu/hooks/liveSummary.mjs';
 import { withBackgroundSilence } from '@/utils/requestNotify.mjs';
 
 const props = defineProps(['hideTitle', 'filters', 'style']);
+const topRef = ref();
 const { t, locale } = useI18n();
 const tableData = ref([]);
 const tableLoading = ref(false);
@@ -305,9 +307,21 @@ const fetchTableData = async ({ background = false } = {}) => {
     if (!background) tableLoading.value = false;
   }
 };
+// One polling task for the whole page. Manual runs (toolbar refresh / filter
+// apply) keep their existing table-only behaviour; automatic ticks also refresh
+// the top summary charts (rendered only when `hideTitle` is false) so they
+// cannot drift from the table. Waits for every request to settle so the
+// controller never overlaps automatic requests.
+const refreshLiveData = ({ background = false } = {}) => {
+  if (!background) return fetchTableData({ background });
+  return settleAll([
+    () => fetchTableData({ background }),
+    () => topRef.value?.refresh?.({ background }),
+  ]);
+};
 // Short-lived GPU Pods (tens of seconds) are easy to miss with manual refresh
 // only; poll while the page is visible so the workload list stays current.
-const { refreshNow } = useAutoRefresh(fetchTableData);
+const { refreshNow } = useAutoRefresh(refreshLiveData);
 const { getTrimValue, applyFilters, refreshTable } = useTableFilters({
   fetchTableData: refreshNow,
   resetBeforeApply: resetToFirstPage,

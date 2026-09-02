@@ -40,8 +40,11 @@ class cardApi {
     });
   }
 
-  getInstantVector(data) {
+  // `config` holds extra axios request options (e.g. `{ silent: true }` from
+  // `withBackgroundSilence` for background polling).
+  getInstantVector(data, config = {}) {
     return request({
+      ...config,
       url: apiPrefix +  '/v1/monitor/query/instant-vector',
       method: 'post',
       data,

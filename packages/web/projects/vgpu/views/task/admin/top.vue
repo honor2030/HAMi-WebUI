@@ -1,6 +1,13 @@
 <template>
   <div class="task-top-box">
-    <TabTop class="item" v-for="item in topConfig" :key="item.key" v-bind="item" :onClick="handleChartClick" />
+    <TabTop
+      v-for="item in topConfig"
+      :key="item.key"
+      ref="topRefs"
+      class="item"
+      v-bind="item"
+      :onClick="handleChartClick"
+    />
   </div>
 </template>
 
@@ -10,7 +17,8 @@ import { useRouter } from 'vue-router';
 import nodeApi from '~/vgpu/api/node';
 import { ElMessage } from 'element-plus';
 import { useI18n } from 'vue-i18n';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import { settleAll } from '~/vgpu/hooks/liveSummary.mjs';
 
 const router = useRouter();
 const { t } = useI18n();
@@ -100,6 +108,20 @@ const topConfig = computed(() => [
     ],
   },
 ]);
+
+// Template ref inside v-for: Vue fills an array with the TabTop instances.
+const topRefs = ref([]);
+
+// Exposed so the Workloads page can refresh these charts from its existing
+// polling controller (`useAutoRefresh`) on the same cadence as the table.
+const refresh = ({ background = false } = {}) =>
+  settleAll(
+    (topRefs.value || [])
+      .filter((top) => top && typeof top.refresh === 'function')
+      .map((top) => () => top.refresh({ background })),
+  );
+
+defineExpose({ refresh });
 </script>
 
 <style scoped lang="scss">

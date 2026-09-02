@@ -4,6 +4,7 @@
 
     <div class="card-admin-top-wrap" v-if="!hideTitle">
       <preview-bar
+        ref="previewBarRef"
         :title="$t('dashboard.card')"
         type="device_uuid"
         :handle-click="handleClick"
@@ -85,9 +86,11 @@ import useTableFilters from '~/vgpu/hooks/useTableFilters';
 import useLocalPagination from '~/vgpu/hooks/useLocalPagination';
 import useAutoRefresh from '~/vgpu/hooks/useAutoRefresh';
 import { createFilterSnapshot } from '~/vgpu/hooks/filterSnapshot.mjs';
+import { settleAll } from '~/vgpu/hooks/liveSummary.mjs';
 import { withBackgroundSilence } from '@/utils/requestNotify.mjs';
 
 const props = defineProps(['hideTitle', 'filters']);
+const previewBarRef = ref();
 
 const router = useRouter();
 const route = useRoute();
@@ -426,9 +429,21 @@ const fetchTableData = async ({ background = false } = {}) => {
     if (!background) tableLoading.value = false;
   }
 };
+// One polling task for the whole page. Manual runs (toolbar refresh / filter
+// apply) keep their existing table-only behaviour; automatic ticks also refresh
+// the top summary charts (rendered only when `hideTitle` is false) so they
+// cannot drift from the table. Waits for every request to settle so the
+// controller never overlaps automatic requests.
+const refreshLiveData = ({ background = false } = {}) => {
+  if (!background) return fetchTableData({ background });
+  return settleAll([
+    () => fetchTableData({ background }),
+    () => previewBarRef.value?.refresh?.({ background }),
+  ]);
+};
 // Short-lived GPU Pods can appear and vanish between manual refreshes; poll
 // while the page is visible so allocations stay current without user action.
-const { refreshNow } = useAutoRefresh(fetchTableData);
+const { refreshNow } = useAutoRefresh(refreshLiveData);
 const { getTrimValue, applyFilters, refreshTable } = useTableFilters({
   fetchTableData: refreshNow,
   resetBeforeApply: resetToFirstPage,
